@@ -477,19 +477,19 @@
                 <h3 class="stats-title">Your Stats</h3>
                 <div class="stat-item">
                     <span class="stat-label">Total Bets:</span>
-                    <span class="stat-value" id="totalBets">0 MON</span>
+                    <span class="stat-value" id="totalBets">Connect wallet</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Today's Bets:</span>
-                    <span class="stat-value" id="dailyBets">0 MON</span>
+                    <span class="stat-value" id="dailyBets">Connect wallet</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Total Winnings:</span>
-                    <span class="stat-value" id="totalWinnings">0 MON</span>
+                    <span class="stat-value" id="totalWinnings">Connect wallet</span>
                 </div>
                 <div class="stat-item">
                     <span class="stat-label">Current Tickets:</span>
-                    <span class="stat-value" id="currentTickets">0</span>
+                    <span class="stat-value" id="currentTickets">Connect wallet</span>
                 </div>
             </div>
         </div>
@@ -1280,13 +1280,13 @@
                 
                 document.getElementById('currentRound').textContent = roundInfo[0].toString();
                 document.getElementById('poolAmount').textContent = 
-                    ethers.formatEther(roundInfo[1]) + ' MON';
+                    parseFloat(ethers.formatEther(roundInfo[1])).toFixed(2) + ' MON';
 
                 // Calculate prizes
                 const totalPool = parseFloat(ethers.formatEther(roundInfo[1]));
                 const mainPrize = (totalPool * 0.7).toFixed(2);
-                const smallPrizesPool = (totalPool * 0.1).toFixed(2);
-                const smallPrizeCount = Math.floor(parseFloat(smallPrizesPool));
+                const smallPrizesPool = (totalPool * 0.1);
+                const smallPrizeCount = Math.floor(smallPrizesPool);
 
                 document.getElementById('mainPrize').textContent = mainPrize + ' MON';
                 document.getElementById('smallPrizes').textContent = 
@@ -1394,13 +1394,20 @@
                 return;
             }
 
+            // Remove duplicates from addresses
+            const uniqueAddresses = [...new Set(addresses.map(addr => addr.toLowerCase()))];
+
             // Get stats for each player and sort
             const playersWithStats = [];
-            for (let address of addresses.slice(0, 10)) { // Top 10
+            for (let address of uniqueAddresses.slice(0, 10)) { // Top 10
                 try {
                     const stats = await contract.getPlayerStats(address);
                     const amount = type === 'total' ? stats[0] : stats[1]; // totalBets or dailyBets
-                    playersWithStats.push({ address, amount });
+                    
+                    // Only include players with non-zero amounts
+                    if (parseFloat(ethers.formatEther(amount)) > 0) {
+                        playersWithStats.push({ address, amount });
+                    }
                 } catch (error) {
                     console.error('Error getting player stats:', error);
                 }
@@ -1411,8 +1418,15 @@
                 return parseFloat(ethers.formatEther(b.amount)) - parseFloat(ethers.formatEther(a.amount));
             });
 
-            // Display leaderboard
-            playersWithStats.forEach((player, index) => {
+            // Display leaderboard (limit to top 5 for cleaner look)
+            const topPlayers = playersWithStats.slice(0, 5);
+            
+            if (topPlayers.length === 0) {
+                container.innerHTML = '<div class="leaderboard-item"><span class="address">No players yet</span></div>';
+                return;
+            }
+
+            topPlayers.forEach((player, index) => {
                 const item = document.createElement('div');
                 item.className = 'leaderboard-item';
                 
@@ -1425,7 +1439,7 @@
                 item.innerHTML = `
                     <span class="rank">#${index + 1}</span>
                     <span class="address">${formatAddress(player.address)}${isCurrentUser ? ' (You)' : ''}</span>
-                    <span class="amount">${ethers.formatEther(player.amount)} MON</span>
+                    <span class="amount">${parseFloat(ethers.formatEther(player.amount)).toFixed(1)} MON</span>
                 `;
                 
                 container.appendChild(item);
@@ -1502,6 +1516,9 @@
         window.addEventListener('load', () => {
             createParticles();
             
+            // Try to initialize read-only contract first
+            initializeReadOnlyContract();
+            
             // Auto-connect if wallet was previously connected
             if (window.ethereum && window.ethereum.selectedAddress) {
                 connectWallet();
@@ -1537,6 +1554,197 @@
                 }
             }, 1000);
         });
+
+        // Initialize read-only contract for basic data
+        async function initializeReadOnlyContract() {
+            try {
+                // Use a public RPC provider for read-only access
+                const readOnlyProvider = new ethers.JsonRpcProvider('https://testnet-rpc.monad.xyz');
+                const readOnlyContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readOnlyProvider);
+                
+                // Update basic data without wallet connection
+                await updateBasicData(readOnlyContract);
+                
+                // Update data every 10 seconds
+                setInterval(() => {
+                    updateBasicData(readOnlyContract);
+                }, 10000);
+                
+            } catch (error) {
+                console.error('Error initializing read-only contract:', error);
+                // Fallback: show placeholder data
+                document.getElementById('currentRound').textContent = '1';
+                document.getElementById('poolAmount').textContent = '0.00 MON';
+                document.getElementById('countdown').textContent = 'Connect wallet to see live data';
+            }
+        }
+
+        // Update basic data (works without wallet)
+        async function updateBasicData(contractInstance) {
+            try {
+                const roundInfo = await contractInstance.getCurrentRoundInfo();
+                
+                document.getElementById('currentRound').textContent = roundInfo[0].toString();
+                document.getElementById('poolAmount').textContent = 
+                    parseFloat(ethers.formatEther(roundInfo[1])).toFixed(2) + ' MON';
+
+                // Calculate prizes
+                const totalPool = parseFloat(ethers.formatEther(roundInfo[1]));
+                const mainPrize = (totalPool * 0.7).toFixed(2);
+                const smallPrizesPool = (totalPool * 0.1);
+                const smallPrizeCount = Math.floor(smallPrizesPool);
+
+                document.getElementById('mainPrize').textContent = mainPrize + ' MON';
+                document.getElementById('smallPrizes').textContent = 
+                    smallPrizeCount + ' × 1 MON';
+
+                // Update countdown
+                const timeLeft = parseInt(roundInfo[3].toString());
+                updateCountdown(timeLeft);
+
+                // Show/hide draw button only if user is connected
+                const canDraw = roundInfo[4];
+                const drawButton = document.getElementById('drawButton');
+                if (userAddress && canDraw) {
+                    drawButton.style.display = 'block';
+                } else {
+                    drawButton.style.display = 'none';
+                }
+
+                // Update leaderboards with read-only data
+                await updateLeaderboardsReadOnly(contractInstance);
+                await updateHistoryReadOnly(contractInstance);
+
+            } catch (error) {
+                console.error('Error updating basic data:', error);
+            }
+        }
+
+        // Update leaderboards (read-only)
+        async function updateLeaderboardsReadOnly(contractInstance) {
+            try {
+                const totalLeaderboard = await contractInstance.getTotalLeaderboard();
+                const dailyLeaderboard = await contractInstance.getDailyLeaderboard();
+
+                await updateLeaderboardReadOnly('totalLeaderboard', totalLeaderboard, 'total', contractInstance);
+                await updateLeaderboardReadOnly('dailyLeaderboard', dailyLeaderboard, 'daily', contractInstance);
+
+            } catch (error) {
+                console.error('Error updating leaderboards:', error);
+            }
+        }
+
+        // Update specific leaderboard (read-only)
+        async function updateLeaderboardReadOnly(elementId, addresses, type, contractInstance) {
+            const container = document.getElementById(elementId);
+            container.innerHTML = '';
+
+            if (addresses.length === 0) {
+                container.innerHTML = '<div class="leaderboard-item"><span class="address">No players yet</span></div>';
+                return;
+            }
+
+            // Remove duplicates from addresses
+            const uniqueAddresses = [...new Set(addresses.map(addr => addr.toLowerCase()))];
+
+            // Get stats for each player and sort
+            const playersWithStats = [];
+            for (let address of uniqueAddresses.slice(0, 10)) { // Top 10
+                try {
+                    const stats = await contractInstance.getPlayerStats(address);
+                    const amount = type === 'total' ? stats[0] : stats[1]; // totalBets or dailyBets
+                    
+                    // Only include players with non-zero amounts
+                    if (parseFloat(ethers.formatEther(amount)) > 0) {
+                        playersWithStats.push({ address, amount });
+                    }
+                } catch (error) {
+                    console.error('Error getting player stats:', error);
+                }
+            }
+
+            // Sort by amount (descending)
+            playersWithStats.sort((a, b) => {
+                return parseFloat(ethers.formatEther(b.amount)) - parseFloat(ethers.formatEther(a.amount));
+            });
+
+            // Display leaderboard (limit to top 5 for cleaner look)
+            const topPlayers = playersWithStats.slice(0, 5);
+            
+            if (topPlayers.length === 0) {
+                container.innerHTML = '<div class="leaderboard-item"><span class="address">No players yet</span></div>';
+                return;
+            }
+
+            topPlayers.forEach((player, index) => {
+                const item = document.createElement('div');
+                item.className = 'leaderboard-item';
+                
+                const isCurrentUser = userAddress && player.address.toLowerCase() === userAddress.toLowerCase();
+                if (isCurrentUser) {
+                    item.style.background = 'rgba(139, 69, 255, 0.2)';
+                    item.style.border = '1px solid #8b45ff';
+                }
+
+                item.innerHTML = `
+                    <span class="rank">#${index + 1}</span>
+                    <span class="address">${formatAddress(player.address)}${isCurrentUser ? ' (You)' : ''}</span>
+                    <span class="amount">${parseFloat(ethers.formatEther(player.amount)).toFixed(1)} MON</span>
+                `;
+                
+                container.appendChild(item);
+            });
+        }
+
+        // Update draw history (read-only)
+        async function updateHistoryReadOnly(contractInstance) {
+            try {
+                const currentRoundInfo = await contractInstance.getCurrentRoundInfo();
+                const currentRoundId = parseInt(currentRoundInfo[0].toString());
+                
+                const historyContainer = document.getElementById('drawHistory');
+                historyContainer.innerHTML = '';
+
+                // Show last 5 completed rounds
+                for (let i = Math.max(1, currentRoundId - 5); i < currentRoundId; i++) {
+                    try {
+                        const round = await contractInstance.getRoundHistory(i);
+                        
+                        if (round[6]) { // if drawn
+                            const historyItem = document.createElement('div');
+                            historyItem.className = 'history-item';
+                            
+                            const mainWinner = round[7];
+                            const mainPrize = ethers.formatEther(round[9]);
+                            const smallWinners = round[8];
+                            
+                            historyItem.innerHTML = `
+                                <div class="round-number">Round #${i}</div>
+                                <div class="winner-info">
+                                    <span>🏆 Main Winner:</span>
+                                    <span>${formatAddress(mainWinner)} - ${parseFloat(mainPrize).toFixed(1)} MON</span>
+                                </div>
+                                <div class="winner-info">
+                                    <span>🎁 Small Winners:</span>
+                                    <span>${smallWinners.length} winner(s)</span>
+                                </div>
+                            `;
+                            
+                            historyContainer.appendChild(historyItem);
+                        }
+                    } catch (error) {
+                        console.error(`Error loading round ${i}:`, error);
+                    }
+                }
+
+                if (historyContainer.children.length === 0) {
+                    historyContainer.innerHTML = '<div class="history-item"><div class="round-number">No completed draws yet</div></div>';
+                }
+
+            } catch (error) {
+                console.error('Error updating history:', error);
+            }
+        }
 
         // Handle wallet account changes
         if (window.ethereum) {
