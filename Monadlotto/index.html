@@ -1353,42 +1353,6 @@
                     throw new Error('No accounts returned from MetaMask');
                 }
                 
-                // Check if on correct network (Monad testnet)
-                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-                console.log('🌐 Current chain ID:', chainId);
-                
-                // If not on Monad testnet, try to switch
-                if (chainId !== '0xa1f6') { // 0xa1f6 = 41462 in hex (Monad testnet)
-                    console.log('🔄 Switching to Monad testnet...');
-                    try {
-                        await window.ethereum.request({
-                            method: 'wallet_switchEthereumChain',
-                            params: [{ chainId: '0xa1f6' }],
-                        });
-                    } catch (switchError) {
-                        console.log('➕ Adding Monad testnet...');
-                        // If network doesn't exist, add it
-                        if (switchError.code === 4902) {
-                            await window.ethereum.request({
-                                method: 'wallet_addEthereumChain',
-                                params: [{
-                                    chainId: '0xa1f6',
-                                    chainName: 'Monad Testnet',
-                                    nativeCurrency: {
-                                        name: 'MON',
-                                        symbol: 'MON',
-                                        decimals: 18
-                                    },
-                                    rpcUrls: ['https://testnet-rpc.monad.xyz'],
-                                    blockExplorerUrls: ['https://testnet-explorer.monad.xyz']
-                                }]
-                            });
-                        } else {
-                            throw switchError;
-                        }
-                    }
-                }
-                
                 console.log('🔧 Creating provider...');
                 provider = new ethers.BrowserProvider(window.ethereum);
                 
@@ -1428,9 +1392,9 @@
                 } else if (error.code === -32002) {
                     showNotification('Connection request already pending', 'error');
                 } else if (error.message.includes('network')) {
-                    showNotification('Network connection failed. Please check Monad testnet settings', 'error');
+                    showNotification('Please make sure you are on the correct network', 'error');
                 } else if (error.message.includes('contract')) {
-                    showNotification('Contract connection failed. Contract may not be deployed', 'error');
+                    showNotification('Contract connection failed. Please check network', 'error');
                 } else {
                     showNotification('Failed to connect wallet: ' + error.message, 'error');
                 }
@@ -1893,8 +1857,15 @@
         // Initialize read-only contract for basic data
         async function initializeReadOnlyContract() {
             try {
-                // Use a public RPC provider for read-only access
-                const readOnlyProvider = new ethers.JsonRpcProvider('https://testnet-rpc.monad.xyz');
+                // Use MetaMask's provider for read-only access if available
+                let readOnlyProvider;
+                if (window.ethereum) {
+                    readOnlyProvider = new ethers.BrowserProvider(window.ethereum);
+                } else {
+                    // Fallback to public RPC (may not work for all networks)
+                    readOnlyProvider = new ethers.JsonRpcProvider('https://testnet-rpc.monad.xyz');
+                }
+                
                 const readOnlyContract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, readOnlyProvider);
                 
                 // Update basic data without wallet connection
