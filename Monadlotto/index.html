@@ -1275,6 +1275,9 @@
             }
 
             try {
+                // Initialize audio on first interaction
+                initializeAudio();
+                
                 await window.ethereum.request({ method: 'eth_requestAccounts' });
                 provider = new ethers.BrowserProvider(window.ethereum);
                 signer = await provider.getSigner();
@@ -1312,6 +1315,9 @@
             }
 
             try {
+                // Initialize audio if not already done
+                initializeAudio();
+                
                 const buyButton = document.getElementById('buyButton');
                 buyButton.disabled = true;
                 buyButton.innerHTML = 'Buying...<div class="loading"></div>';
