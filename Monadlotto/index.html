@@ -42,6 +42,108 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 15px;
+        }
+
+        .monad-logo {
+            width: 60px;
+            height: 60px;
+            background-image: url('monadlogo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            animation: logoFloat 3s ease-in-out infinite;
+        }
+
+        @keyframes logoFloat {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-5px); }
+        }
+
+        .chong-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            width: 120px;
+            height: 120px;
+            z-index: 1000;
+            pointer-events: none;
+        }
+
+        .chong {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .chong-img {
+            width: 100px;
+            height: 100px;
+            background-image: url('monad-closed.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            transition: all 0.3s ease;
+        }
+
+        .chong-img.eating {
+            background-image: url('monad-open.png');
+            animation: mouthChomp 0.5s ease-in-out;
+        }
+
+        @keyframes mouthChomp {
+            0%, 100% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.1); }
+        }
+
+        .mon-coin {
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-image: url('monadlogo.png');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+            opacity: 0;
+            pointer-events: none;
+            z-index: 1001;
+        }
+
+        .mon-coin.flying {
+            animation: flyToChing 1s ease-out forwards;
+        }
+
+        @keyframes flyToChing {
+            0% {
+                opacity: 1;
+                transform: scale(1) rotate(0deg);
+            }
+            50% {
+                opacity: 1;
+                transform: scale(0.8) rotate(180deg);
+            }
+            100% {
+                opacity: 0;
+                transform: scale(0.2) rotate(360deg);
+            }
+        }
+
+        .chong.happy {
+            animation: chongBounce 0.6s ease-in-out;
+        }
+
+        @keyframes chongBounce {
+            0%, 100% { transform: translateY(0px); }
+            25% { transform: translateY(-10px); }
+            75% { transform: translateY(-5px); }
         }
 
         .subtitle {
@@ -435,7 +537,10 @@
     
     <div class="container">
         <header class="header">
-            <h1 class="logo">🎲 MONAD LOTTERY</h1>
+            <h1 class="logo">
+                <div class="monad-logo"></div>
+                MONAD LOTTERY
+            </h1>
             <p class="subtitle">Daily draws at 23:59 UTC • Win massive prizes from the pool!</p>
             <div class="wallet-status" id="walletStatus" onclick="connectWallet()">
                 Connect Wallet
@@ -529,6 +634,13 @@
     </div>
 
     <div class="notification" id="notification"></div>
+
+    <!-- Chong Character -->
+    <div class="chong-container">
+        <div class="chong" id="chong">
+            <div class="chong-img" id="chongImg"></div>
+        </div>
+    </div>
 
     <script>
         // Contract configuration
@@ -1204,6 +1316,9 @@
                 buyButton.disabled = true;
                 buyButton.innerHTML = 'Buying...<div class="loading"></div>';
 
+                // Trigger Chong eating animation
+                animateChongEating(ticketCount);
+
                 const ticketPrice = ethers.parseEther('1'); // 1 MON per ticket
                 const totalCost = ticketPrice * BigInt(ticketCount);
 
@@ -1225,6 +1340,84 @@
                 buyButton.disabled = false;
                 buyButton.innerHTML = 'Buy Tickets (1 MON each)';
             }
+        }
+
+        // Animate Chong eating MON coins
+        function animateChongEating(coinCount) {
+            const chong = document.getElementById('chong');
+            const chongImg = document.getElementById('chongImg');
+            const buyButton = document.getElementById('buyButton');
+            
+            // Get button position for coin animation start point
+            const buttonRect = buyButton.getBoundingClientRect();
+            const chongRect = chong.getBoundingClientRect();
+            
+            // Make chong happy and mouth open
+            chong.classList.add('happy');
+            chongImg.classList.add('eating');
+            
+            // Create and animate coins
+            for (let i = 0; i < coinCount; i++) {
+                setTimeout(() => {
+                    createFlyingCoin(buttonRect, chongRect);
+                }, i * 200); // Stagger coins
+            }
+            
+            // Reset chong after animation
+            setTimeout(() => {
+                chong.classList.remove('happy');
+                chongImg.classList.remove('eating');
+            }, (coinCount * 200) + 1000);
+        }
+
+        // Create individual flying coin
+        function createFlyingCoin(startRect, endRect) {
+            const coin = document.createElement('div');
+            coin.className = 'mon-coin flying';
+            
+            // Position coin at button location
+            coin.style.left = startRect.left + startRect.width / 2 + 'px';
+            coin.style.top = startRect.top + startRect.height / 2 + 'px';
+            
+            document.body.appendChild(coin);
+            
+            // Calculate path to chong's mouth
+            const deltaX = (endRect.left + endRect.width / 2) - (startRect.left + startRect.width / 2);
+            const deltaY = (endRect.top + endRect.height / 2) - (startRect.top + startRect.height / 2);
+            
+            // Apply flying animation
+            coin.style.setProperty('--deltaX', deltaX + 'px');
+            coin.style.setProperty('--deltaY', deltaY + 'px');
+            
+            // Custom keyframes for this specific coin
+            const animation = coin.animate([
+                { 
+                    transform: 'rotate(45deg) scale(1)',
+                    left: startRect.left + startRect.width / 2 + 'px',
+                    top: startRect.top + startRect.height / 2 + 'px',
+                    opacity: 1
+                },
+                { 
+                    transform: 'rotate(45deg) scale(0.8)',
+                    left: (startRect.left + startRect.width / 2 + deltaX * 0.5) + 'px',
+                    top: (startRect.top + startRect.height / 2 + deltaY * 0.5) + 'px',
+                    opacity: 1
+                },
+                { 
+                    transform: 'rotate(45deg) scale(0.2)',
+                    left: (endRect.left + endRect.width / 2) + 'px',
+                    top: (endRect.top + endRect.height / 2) + 'px',
+                    opacity: 0
+                }
+            ], {
+                duration: 1000,
+                easing: 'ease-out'
+            });
+            
+            // Remove coin after animation
+            animation.onfinish = () => {
+                coin.remove();
+            };
         }
 
         // Draw winners function
