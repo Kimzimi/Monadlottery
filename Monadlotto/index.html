@@ -1269,35 +1269,111 @@
 
         // Connect wallet function
         async function connectWallet() {
+            console.log('🔗 Attempting to connect wallet...');
+            
             if (typeof window.ethereum === 'undefined') {
+                console.error('❌ MetaMask not detected');
                 showNotification('Please install MetaMask!', 'error');
                 return;
             }
 
             try {
+                console.log('📡 Requesting account access...');
+                
                 // Initialize audio on first interaction
                 initializeAudio();
                 
-                await window.ethereum.request({ method: 'eth_requestAccounts' });
-                provider = new ethers.BrowserProvider(window.ethereum);
-                signer = await provider.getSigner();
-                userAddress = await signer.getAddress();
+                const accounts = await window.ethereum.request({ 
+                    method: 'eth_requestAccounts' 
+                });
                 
-                // Initialize contract
+                console.log('✅ Accounts received:', accounts);
+                
+                if (accounts.length === 0) {
+                    throw new Error('No accounts returned from MetaMask');
+                }
+                
+                // Check if on correct network (Monad testnet)
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                console.log('🌐 Current chain ID:', chainId);
+                
+                // If not on Monad testnet, try to switch
+                if (chainId !== '0xa1f6') { // 0xa1f6 = 41462 in hex (Monad testnet)
+                    console.log('🔄 Switching to Monad testnet...');
+                    try {
+                        await window.ethereum.request({
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0xa1f6' }],
+                        });
+                    } catch (switchError) {
+                        console.log('➕ Adding Monad testnet...');
+                        // If network doesn't exist, add it
+                        if (switchError.code === 4902) {
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0xa1f6',
+                                    chainName: 'Monad Testnet',
+                                    nativeCurrency: {
+                                        name: 'MON',
+                                        symbol: 'MON',
+                                        decimals: 18
+                                    },
+                                    rpcUrls: ['https://testnet-rpc.monad.xyz'],
+                                    blockExplorerUrls: ['https://testnet-explorer.monad.xyz']
+                                }]
+                            });
+                        } else {
+                            throw switchError;
+                        }
+                    }
+                }
+                
+                console.log('🔧 Creating provider...');
+                provider = new ethers.BrowserProvider(window.ethereum);
+                
+                console.log('✍️ Getting signer...');
+                signer = await provider.getSigner();
+                
+                console.log('📍 Getting address...');
+                userAddress = await signer.getAddress();
+                console.log('👤 User address:', userAddress);
+                
+                // Test contract connection
+                console.log('📋 Connecting to contract...');
                 contract = new ethers.Contract(CONTRACT_ADDRESS, CONTRACT_ABI, signer);
                 
+                // Test a simple read call to verify contract works
+                console.log('🧪 Testing contract connection...');
+                const currentRound = await contract.currentRound();
+                console.log('✅ Contract test successful, current round:', currentRound.toString());
+                
+                // Update UI
                 document.getElementById('walletStatus').textContent = 
                     userAddress.slice(0, 6) + '...' + userAddress.slice(-4);
                 
                 showNotification('Wallet connected successfully!', 'success');
                 
                 // Start updating data
+                console.log('🔄 Starting data updates...');
                 updateData();
                 updateInterval = setInterval(updateData, 5000);
                 
             } catch (error) {
-                console.error('Error connecting wallet:', error);
-                showNotification('Failed to connect wallet', 'error');
+                console.error('❌ Error connecting wallet:', error);
+                
+                // More specific error messages
+                if (error.code === 4001) {
+                    showNotification('Connection rejected by user', 'error');
+                } else if (error.code === -32002) {
+                    showNotification('Connection request already pending', 'error');
+                } else if (error.message.includes('network')) {
+                    showNotification('Network connection failed. Please check Monad testnet settings', 'error');
+                } else if (error.message.includes('contract')) {
+                    showNotification('Contract connection failed. Contract may not be deployed', 'error');
+                } else {
+                    showNotification('Failed to connect wallet: ' + error.message, 'error');
+                }
             }
         }
 
